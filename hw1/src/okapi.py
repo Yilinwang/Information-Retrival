@@ -15,60 +15,45 @@ def read_model(model_dir):
     vocab = dict(zip(vl, range(1, len(vl))))
     return file_list, vocab
 
-def cal_tfidf(model_dir, N):
-    idf = dict()
+def cal_tf_df(model_dir, N):
+    df = defaultdict(int)
     tf = defaultdict(lambda: defaultdict(int))
-    cur_idf = -1
+    doc_len = defaultdict(int)
     cur_term = -1
-    cur_docs = list()
-    max_tf = -1
     with open(model_dir+'/inverted-index') as fp:
     #with open('small') as fp:
         for line in fp:
             tmp = line.strip().split()
             if len(tmp) == 3:
-                idf[cur_term] = cur_idf
-                for doc, count in cur_docs:
-                    #tf[doc][cur_term] = int(count)
-                    tf[doc][cur_term] = int(count) * idf[cur_term]
-                    if int(count) > max_tf:
-                        max_tf = int(count)
-                cur_idf = log(N/int(tmp[2]))
                 cur_term = tmp[0] if tmp[1] == '-1' else tmp[0]+':'+tmp[1]
-                cur_docs.clear()
+                df[cur_term] = int(tmp[2])
             elif len(tmp) == 2:
-                cur_docs.append((int(tmp[0]), int(tmp[1])))
-                '''
-    for doc in tf:
-        for term in tf[doc]:
-            tf[doc][term] = (tf[doc][term] / max_tf)
-            '''
-    return tf, idf
+                tf[int(tmp[0])][cur_term] = int(tmp[1])
+                doc_len[int(tmp[0])] += int(tmp[1])
+    ave = sum(doc_len.values()) / N
+    return tf, df, doc_len, ave
 
-def parse(query_file, idf, vocab):
+def parse(query_file, vocab):
     query = list()
     root = ET.parse(query_file).getroot()
     for topic in root.findall('topic'):
         num = topic.find('number').text.strip()[-3:]
         d = defaultdict(int)
-        max_tf = -1
         for term in bigram(topic.find('concepts').text.strip('。\n ').split('、'), vocab):
-            #d[term] += 1
-            if term in idf:
-                d[term] += idf[term]
-            if d[term] > max_tf:
-                max_tf = d[term]
-                '''
-        for term in d:
-            d[term] = d[term]/max_tf
-            '''
+            d[term] += 1
+        for term in bigram(topic.find('title').text.strip('。\n ').split('、'), vocab):
+            d[term] += 1
+        for term in bigram(topic.find('question').text.strip('。\n ').split('、'), vocab):
+            d[term] += 1
+        for term in bigram(topic.find('narrative').text.strip('。\n ').split('、'), vocab):
+            d[term] += 1
         query.append((num, d))
     return query
 
 def bigram(q, vocab):
     l = list()
     for w in q:
-        w = [str(vocab[x]) for x in w]
+        w = [str(vocab[x]) for x in w if x in vocab]
         for i in range(len(w)-1):
             l.append(w[i])
             l.append(':'.join(w[i:i+2]))
@@ -82,6 +67,9 @@ def get_args():
     parser.add_argument('-o', '--ranked_list', type=str)
     parser.add_argument('-m', '--model_dir', type=str)
     parser.add_argument('-d', '--ntcir_dir', type=str)
+    parser.add_argument('-k1', type=float)
+    parser.add_argument('-k3', type=float)
+    parser.add_argument('-b', type=float)
     args = parser.parse_args()
     if(args.r):
         pass
@@ -90,24 +78,18 @@ def get_args():
 def main():
     args = get_args()
     file_list, vocab = read_model(args.model_dir)
-    tf, idf = cal_tfidf(args.model_dir, len(file_list))
-    query = parse(args.query_file, idf, vocab)
+    tf, df, doc_len, ave = cal_tf_df(args.model_dir, len(file_list))
+    query = parse(args.query_file, vocab)
 
+    b = args.b
+    k1 = args.k1
+    k3 = args.k3
     result = defaultdict(lambda: defaultdict(int))
-    '''
     for doc in tf:
         for qnum, q in query:
-            for term in idf:
-                result[qnum][doc] += ((tf[doc][term]*0.5+0.5)*idf[term])*((q[term]*0.5+0.5)*idf[term])
-    '''
-    for doc in tf:
-        doc_sum = sum(tf[doc].values())
-        for qnum, q in query:
-            q_sum = sum(q.values())
             for term in q:
-                if term in tf[doc]:
-                    result[qnum][doc] += tf[doc][term] * q[term]
-            result[qnum][doc] /= (doc_sum**2)*(q_sum**2)
+                if term in df:
+                    result[qnum][doc] += log(len(file_list)/df[term]) * (((k1+1)*tf[doc][term])/(k1*((1-b)+b*(doc_len[doc]/ave)))) * (((k3+1)*q[term])/(k3+q[term]))
 
     print('query_id,retrieved_docs')
     for qnum in result:
