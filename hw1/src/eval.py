@@ -59,15 +59,28 @@ def mapk(actual, predicted, k=100):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('-r', action='store_true')
-    parser.add_argument('-i', '--query_file', type=str)
-    parser.add_argument('-o', '--ranked_list', type=str)
-    parser.add_argument('-m', '--model_dir', type=str)
-    parser.add_argument('-d', '--ntcir_dir', type=str)
+    parser.add_argument('-i', type=str)
     args = parser.parse_args()
-    if(args.r):
-        pass
-    return args
+
+    actual = {}
+    predicted = {}
+    with open('queries/ans_train.csv') as fp:
+        fp.readline()
+        for line in fp:
+            tmp = line.strip().split(',')
+            actual[tmp[0]] = tmp[1].strip().split(' ')
+    with open(args.i) as fp:
+        fp.readline()
+        for line in fp:
+            tmp = line.strip().split(',')
+            predicted[tmp[0]] = tmp[1].strip().split(' ')
+    if not len(predicted) == len(actual):
+        print('not this one')
+        exit()
+    ans = 0
+    for i in actual:
+        ans += mapk(actual[i], predicted[i])
+    print(ans/10)
 
 if __name__ == '__main__':
     main()
