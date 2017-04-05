@@ -1,4 +1,6 @@
 import pickle
+import jieba
+import re
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
 from collections import defaultdict
@@ -31,7 +33,6 @@ def cal_tf_idf(model_dir, N):
                 idf[cur_term] = log((N-df+0.5)/(df+0.5))
             elif len(tmp) == 2:
                 tf[int(tmp[0])][cur_term] = int(tmp[1])
-                #if ':' not in cur_term:
                 doc_len[int(tmp[0])] += int(tmp[1])
     ave = sum(doc_len.values()) / N
     return tf, idf, doc_len, ave
@@ -42,27 +43,26 @@ def parse(query_file, vocab):
     for topic in root.findall('topic'):
         num = topic.find('number').text.strip()[-3:]
         d = defaultdict(int)
-        for term in bigram(topic.find('concepts').text.strip('。\n ').split('、'), vocab):
+        for term in bigram(re.split('，|？|。|、', topic.find('concepts').text.strip('。\n ')), vocab):
             d[term] += 1
-            '''
-        for term in bigram(topic.find('title').text.strip('。\n ').split('、'), vocab):
+        for term in bigram(re.split('，|？|。|、', topic.find('title').text.strip('。\n ')), vocab):
             d[term] += 1
-        for term in bigram(topic.find('question').text.strip('。\n ').split('、'), vocab):
+        for term in bigram(re.split('，|？|。|、', topic.find('question').text.strip('。\n ')), vocab):
             d[term] += 1
-        for term in bigram(topic.find('narrative').text.strip('。\n ').split('、'), vocab):
+        for term in bigram(re.split('，|？|。|、', topic.find('narrative').text.strip('。\n ')), vocab):
             d[term] += 1
-            '''
         query[num] = d
     return query
 
 def bigram(q, vocab):
     l = list()
     for w in q:
-        w = [str(vocab[x]) for x in w if x in vocab]
-        for i in range(len(w)-1):
-            l.append(w[i])
-            l.append(':'.join(w[i:i+2]))
-        l.append(w[-1])
+        if not len(w) == 0:
+            w = [str(vocab[x]) for x in w if x in vocab]
+            for i in range(len(w)-1):
+                l.append(w[i])
+                l.append(':'.join(w[i:i+2]))
+            l.append(w[-1])
     return l
 
 def get_args():
@@ -92,7 +92,6 @@ def cal_result(query_vec, query_sum, doc_vec, doc_sum):
 def main():
     args = get_args()
     file_list, vocab = read_model(args.model_dir)
-    query = parse(args.query_file, vocab)
     tf, idf, doc_len, ave = cal_tf_idf(args.model_dir, len(file_list))
     query = parse(args.query_file, vocab)
 
@@ -122,14 +121,9 @@ def main():
         d = args.doc
         for q in query:
             rel_doc = list(zip(*sorted(result[q].items(), key=lambda x: x[1], reverse=True)))[0][:d]
-            length = 0
             for doc in rel_doc:
                 for term in doc_vec[doc]:
-                    length += doc_vec[doc][term]**2
-            length = sqrt(length)
-            for doc in rel_doc:
-                for term in doc_vec[doc]:
-                    query_vec[q][term] += b * (doc_vec[doc][term]/length)
+                    query_vec[q][term] += (b/doc) * doc_vec[doc][term]
             query_sum[q] = 0
             for term in query_vec[q]:
                 query_sum[q] += query_vec[q][term]**2
