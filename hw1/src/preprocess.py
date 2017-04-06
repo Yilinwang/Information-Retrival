@@ -38,7 +38,7 @@ def cal_tf_idf(model_dir, N):
     ave = sum(doc_len.values()) / N
     return tf, idf, doc_len, ave
 
-def parse(query_file, vocab):
+def parse(query_file):
     query = dict()
     root = ET.parse(query_file).getroot()
     for topic in root.findall('topic'):
@@ -112,7 +112,7 @@ def main():
     #file_list, vocab = read_model(args.model_dir)
     #tf, idf, doc_len, ave = cal_tf_idf(args.model_dir, len(file_list))
     tf, df, doc_len, ave = preprocess(args.model_dir)
-    query = parse(args.query_file, vocab)
+    query = parse(args.query_file)
 
     b = 0.85
     k1 = 1.4
