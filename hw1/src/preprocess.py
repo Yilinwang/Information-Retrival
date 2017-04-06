@@ -95,13 +95,15 @@ def preprocess(model_dir):
             root = ET.parse(line.strip()).getroot()
             doc_id = root.find('doc').find('id').text.strip()
             c = Counter()
-            c.update(list(jieba.cut_for_search(root.find('doc').find('title').text.strip())))
-            for p in root.find('doc').find('text').findall('p'):
-                c.update(list(jieba.cut_for_search(p.text.strip())))
-            for term in c.keys():
-                df[term] += 1
-            doc_len[doc_id] = sum(c.values())
-            tf[doc_id] = dict(c)
+            title = root.find('doc').find('title').text
+            if not title == None:
+                c.update(list(jieba.cut_for_search(title.strip())))
+                for p in root.find('doc').find('text').findall('p'):
+                    c.update(list(jieba.cut_for_search(p.text.strip())))
+                for term in c.keys():
+                    df[term] += 1
+                doc_len[doc_id] = sum(c.values())
+                tf[doc_id] = dict(c)
     ave = sum(doc_len.values())/len(doc_len)
     return tf, df, doc_len, ave
 
@@ -153,7 +155,7 @@ def main():
         fp.write('query_id,retrieved_docs\n')
         for qnum in result:
             fp.write(str(qnum)+',')
-            fp.write(' '.join([file_list[x[0]] for x in sorted(result[qnum].items(), key=lambda x: x[1], reverse=True)[:100]])+'\n')
+            fp.write(' '.join([x[0] for x in sorted(result[qnum].items(), key=lambda x: x[1], reverse=True)[:100]])+'\n')
 
 
 if __name__ == '__main__':
