@@ -95,9 +95,9 @@ def main():
     tf, idf, doc_len, ave = cal_tf_idf(args.model_dir, len(file_list))
     query = parse(args.query_file, vocab)
 
-    b = args.b
-    k1 = args.k1
-    k3 = args.k3
+    b = 0.85
+    k1 = 1.4
+    k3 = 350
 
     doc_vec = defaultdict(lambda: defaultdict(int))
     doc_sum = defaultdict(int)
@@ -118,7 +118,7 @@ def main():
 
     if args.r:
         b = 0.8
-        d = args.doc
+        d = 10
         for q in query:
             rel_doc = list(zip(*sorted(result[q].items(), key=lambda x: x[1], reverse=True)))[0][:d]
             for doc in rel_doc:
@@ -130,10 +130,11 @@ def main():
             query_sum[q] = sqrt(query_sum[q])
         result = cal_result(query_vec, query_sum, doc_vec, doc_sum)
 
-    print('query_id,retrieved_docs')
-    for qnum in result:
-        print(qnum, end=',')
-        print(' '.join([file_list[x[0]] for x in sorted(result[qnum].items(), key=lambda x: x[1], reverse=True)[:100]]))
+    with open(args.ranked_list, 'w') as fp:
+        fp.write('query_id,retrieved_docs\n')
+        for qnum in result:
+            fp.write(str(qnum)+',')
+            fp.write(' '.join([file_list[x[0]] for x in sorted(result[qnum].items(), key=lambda x: x[1], reverse=True)[:100]])+'\n')
 
 
 if __name__ == '__main__':
