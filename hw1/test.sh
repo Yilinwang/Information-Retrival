@@ -1,2 +1,2 @@
 #!/bin/bash
-python3 src/preprocess.py -i queries/query-train.xml -o ranked_list -m model -d NTCIR
+python3 src/preprocess.py -i queries/query-test.xml -o seg_test -m model -d NTCIR
