@@ -1,4 +1,6 @@
 from collections import defaultdict
+from joblib import Parallel, delayed
+import multiprocessing
 import numpy as np
 import itertools
 import argparse
@@ -15,7 +17,7 @@ class Data:
 
 def sigmoid(x):
     if x < 0:
-        return 1.0 - 1.0 / (1.0 + math.exp(x))
+        return 1.0 - (1.0 / (1.0 + math.exp(x)))
     else:
         return 1.0 / (1.0 + math.exp(-x))
 
@@ -24,19 +26,36 @@ def evaluate(data, data_val, idcg_val, w):
     ndcg_sum = 0
     for qid in data_val['rel']:
         dcg = 0
-        for idx, doc in enumerate(sorted(data['qid'][qid], key=lambda x: sigmoid(np.dot(np.transpose(w), x.features)), reverse=True)[:10]): 
-            dcg += (2**doc.rel - 1) / math.log(idx+2, 2) 
         if idcg_val[qid] != 0:
+            for idx, doc in enumerate(sorted(data['qid'][qid], key=lambda x: sigmoid(np.dot(np.transpose(w), x.features)), reverse=True)[:10]): 
+                dcg += (2**doc.rel - 1) / math.log(idx+2, 2) 
             ndcg = dcg / idcg_val[qid] 
             ndcg_sum += ndcg
     return ndcg_sum/10
 
 
-def task1(data, eta, data_val, idcg_val, iter):
-    w = np.ones(136) / 136
+def L(high, low, data, w):
+    tmp = np.zeros(136)
+    for x1 in data['rel'][high]:
+        for x2 in data['rel'][low]:
+            fx1 = sigmoid(np.dot(np.transpose(w), x1.features))
+            fx2 = sigmoid(np.dot(np.transpose(w), x2.features))
+            ef = math.exp(fx2-fx1)
+            a = ((ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features)))
+            tmp += a
+    return tmp
 
+
+def task1(data, eta, data_val, idcg_val, iter):
+    #w = np.ones(136) / 136
+    np.random.seed(0)
+    w = np.random.rand(136)
+    w = w / sum(w)
     for it in range(iter):
         print(it, evaluate(data, data_val, idcg_val, w))
+        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data, w) for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2))
+        w = w - eta * sum(tmpL)
+        '''
         for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2):
             for x1 in data['rel'][high]:
                 for x2 in data['rel'][low]:
@@ -44,7 +63,9 @@ def task1(data, eta, data_val, idcg_val, iter):
                     fx2 = sigmoid(np.dot(np.transpose(w), x2.features))
                     ef = math.exp(fx2-fx1)
                     w = w - eta * ((ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features)))
+        '''
     print(evaluate(data, data_val, idcg_val, w))
+    print(w)
 
 
 def get_args():
@@ -59,8 +80,12 @@ def get_args():
     return parser.parse_args()
 
 
+def dl():
+    return defaultdict(list)
+
+
 def read_data(file_name):
-    data = defaultdict(lambda: defaultdict(list))
+    data = defaultdict(dl)
     with open(file_name) as fp:
         lines = fp.readlines()
         for idx, line in enumerate(lines):
@@ -82,11 +107,8 @@ def cal_idcg(data):
 def main():
     args = get_args()
     data = read_data(args.train)
-    print('read train done')
     data_val = read_data(args.vali)
-    print('read vali done')
     idcg_val = cal_idcg(data_val)
-    print('cal idcg done')
     if args.task == 1:
         task1(data, args.eta, data_val, idcg_val, args.iter)
 
