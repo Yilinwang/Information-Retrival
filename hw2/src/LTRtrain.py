@@ -58,6 +58,18 @@ def task1(data, eta, data_val, idcg_val, iter):
         for qid in data:
             tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data[qid], w) for high, low in itertools.combinations(sorted(data[qid].keys(), reverse=True), 2))
             w = w - eta * sum(tmpL)
+        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data, w) for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2))
+        w = w - eta * sum(tmpL)
+        '''
+        for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2):
+            for x1 in data['rel'][high]:
+                for x2 in data['rel'][low]:
+                    fx1 = sigmoid(np.dot(np.transpose(w), x1.features))
+                    fx2 = sigmoid(np.dot(np.transpose(w), x2.features))
+                    ef = math.exp(fx2-fx1)
+                    w = w - eta * ((ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features)))
+        '''
+>>>>>>> 5410ff6bf91822780e6d883d974a0e0ec0ab1bcd
     print(evaluate(data, data_val, idcg_val, w))
     print(w)
 
