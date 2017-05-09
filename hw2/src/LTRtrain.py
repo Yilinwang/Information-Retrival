@@ -53,6 +53,7 @@ def task1(data, eta, data_val, idcg_val, iter):
     w = w / sum(w)
     for it in range(iter):
         print(it, evaluate(data, data_val, idcg_val, w))
+        print(w)
         tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data, w) for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2))
         w = w - eta * sum(tmpL)
         '''
