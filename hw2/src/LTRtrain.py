@@ -24,20 +24,22 @@ def sigmoid(x):
 
 def evaluate(data, data_val, idcg_val, w):
     ndcg_sum = 0
-    for qid in data_val['rel']:
+    for qid in data_val:
         dcg = 0
         if idcg_val[qid] != 0:
-            for idx, doc in enumerate(sorted(data['qid'][qid], key=lambda x: sigmoid(np.dot(np.transpose(w), x.features)), reverse=True)[:10]): 
+            for idx, doc in enumerate(sorted([x for rel in data[qid] for x in data[qid][rel]], key=lambda x: sigmoid(np.dot(np.transpose(w), x.features)), reverse=True)[:10]): 
                 dcg += (2**doc.rel - 1) / math.log(idx+2, 2) 
             ndcg = dcg / idcg_val[qid] 
             ndcg_sum += ndcg
-    return ndcg_sum/10
+        else:
+            ndcg_sum += 1
+    return ndcg_sum / len(data_val)
 
 
-def L(high, low, data, w):
+def L(high, low, data_qid, w):
     tmp = np.zeros(136)
-    for x1 in data['rel'][high]:
-        for x2 in data['rel'][low]:
+    for x1 in data_qid[high]:
+        for x2 in data_qid[low]:
             fx1 = sigmoid(np.dot(np.transpose(w), x1.features))
             fx2 = sigmoid(np.dot(np.transpose(w), x2.features))
             ef = math.exp(fx2-fx1)
@@ -53,17 +55,9 @@ def task1(data, eta, data_val, idcg_val, iter):
     w = w / sum(w)
     for it in range(iter):
         print(it, evaluate(data, data_val, idcg_val, w))
-        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data, w) for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2))
-        w = w - eta * sum(tmpL)
-        '''
-        for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2):
-            for x1 in data['rel'][high]:
-                for x2 in data['rel'][low]:
-                    fx1 = sigmoid(np.dot(np.transpose(w), x1.features))
-                    fx2 = sigmoid(np.dot(np.transpose(w), x2.features))
-                    ef = math.exp(fx2-fx1)
-                    w = w - eta * ((ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features)))
-        '''
+        for qid in data:
+            tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data[qid], w) for high, low in itertools.combinations(sorted(data[qid].keys(), reverse=True), 2))
+            w = w - eta * sum(tmpL)
     print(evaluate(data, data_val, idcg_val, w))
     print(w)
 
@@ -87,19 +81,17 @@ def dl():
 def read_data(file_name):
     data = defaultdict(dl)
     with open(file_name) as fp:
-        lines = fp.readlines()
-        for idx, line in enumerate(lines):
+        for idx, line in enumerate(fp):
             line = line.strip().split(' ', 3)
             tmp = Data(int(line[0]), int(line[1].split(':')[1]), int(line[2].split(':')[1]), np.array([float(x.split(':')[1]) for x in line[3].split(' ')]))
-            data['rel'][tmp.rel].append(tmp)
-            data['qid'][tmp.qid].append(tmp)
+            data[tmp.qid][tmp.rel].append(tmp)
     return data
 
 
 def cal_idcg(data):
     idcg = defaultdict(float)
-    for qid in data['qid']:
-        for idx, doc in enumerate(sorted(data['qid'][qid], key=lambda x: x.rel, reverse=True)[:10]):
+    for qid in data:
+        for idx, doc in enumerate(sorted([x for rel in data[qid] for x in data[qid][rel]], key=lambda x: x.rel, reverse=True)[:10]):
             idcg[qid] += ((2**doc.rel) - 1) / math.log(idx+2, 2)
     return idcg
 
