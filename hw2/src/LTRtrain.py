@@ -3,8 +3,10 @@ from joblib import Parallel, delayed
 import multiprocessing
 import numpy as np
 import itertools
+import random
 import argparse
 import math
+import pickle
 
 
 class Data:
@@ -22,55 +24,38 @@ def sigmoid(x):
         return 1.0 / (1.0 + math.exp(-x))
 
 
-def evaluate(data, data_val, idcg_val, w):
+def f(w, x):
+    return sigmoid(np.dot(np.transpose(w), x.features))
+
+
+def evaluate(data_val, idcg_val, w):
     ndcg_sum = 0
+    count = 0
     for qid in data_val:
         dcg = 0
         if idcg_val[qid] != 0:
-            for idx, doc in enumerate(sorted([x for rel in data[qid] for x in data[qid][rel]], key=lambda x: sigmoid(np.dot(np.transpose(w), x.features)), reverse=True)[:10]): 
-                dcg += (2**doc.rel - 1) / math.log(idx+2, 2) 
+            for idx, doc in enumerate(sorted([x for x in data_val[qid]], key=lambda x: f(w, x), reverse=True)[:10]): 
+                dcg += (2**doc.rel - 1) / math.log(idx+2, 2)
             ndcg = dcg / idcg_val[qid] 
             ndcg_sum += ndcg
-        else:
-            ndcg_sum += 1
-    return ndcg_sum / len(data_val)
+            count += 1
+    return ndcg_sum / count
 
 
-def L(high, low, data_qid, w):
-    tmp = np.zeros(136)
-    for x1 in data_qid[high]:
-        for x2 in data_qid[low]:
-            fx1 = sigmoid(np.dot(np.transpose(w), x1.features))
-            fx2 = sigmoid(np.dot(np.transpose(w), x2.features))
-            ef = math.exp(fx2-fx1)
-            a = ((ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features)))
-            tmp += a
-    return tmp
+def L(x1, x2, w):
+    fx1 = f(w, x1)
+    fx2 = f(w, x2)
+    ef = math.exp(fx2-fx1)
+    return (ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features))
 
 
-def task1(data, eta, data_val, idcg_val, iter):
-    #w = np.ones(136) / 136
-    np.random.seed(0)
+def task1(data, data_rel, eta, data_val, idcg_val, iter):
     w = np.random.rand(136)
-    w = w / sum(w)
     for it in range(iter):
-        print(it, evaluate(data, data_val, idcg_val, w))
-        for qid in data:
-            tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data[qid], w) for high, low in itertools.combinations(sorted(data[qid].keys(), reverse=True), 2))
-            w = w - eta * sum(tmpL)
-        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, data, w) for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2))
+        print(it, evaluate(data_val, idcg_val, w))
+        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, w) for high, low in itertools.product(random.sample(data_rel[1], 300), random.sample(data_rel[0], 300)))
         w = w - eta * sum(tmpL)
-        '''
-        for high, low in itertools.combinations(sorted(data['rel'].keys(), reverse=True), 2):
-            for x1 in data['rel'][high]:
-                for x2 in data['rel'][low]:
-                    fx1 = sigmoid(np.dot(np.transpose(w), x1.features))
-                    fx2 = sigmoid(np.dot(np.transpose(w), x2.features))
-                    ef = math.exp(fx2-fx1)
-                    w = w - eta * ((ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features)))
-        '''
->>>>>>> 5410ff6bf91822780e6d883d974a0e0ec0ab1bcd
-    print(evaluate(data, data_val, idcg_val, w))
+    print(evaluate(data_val, idcg_val, w))
     print(w)
 
 
@@ -86,35 +71,62 @@ def get_args():
     return parser.parse_args()
 
 
-def dl():
-    return defaultdict(list)
-
-
 def read_data(file_name):
-    data = defaultdict(dl)
+    data = defaultdict(list)
+    data_rel = defaultdict(list)
+
+    normalizer = list()
+    tmpdata = list()
+
     with open(file_name) as fp:
         for idx, line in enumerate(fp):
             line = line.strip().split(' ', 3)
             tmp = Data(int(line[0]), int(line[1].split(':')[1]), int(line[2].split(':')[1]), np.array([float(x.split(':')[1]) for x in line[3].split(' ')]))
-            data[tmp.qid][tmp.rel].append(tmp)
-    return data
+
+            if len(tmp.features) == 136:
+                normalizer.append(tmp.features)
+                tmpdata.append(tmp)
+
+    n = np.array(normalizer).transpose()
+    for d in tmpdata:
+        for i in range(136):
+            minx = min(n[i])
+            maxx = max(n[i])
+            if minx == 0 and maxx == 0:
+                print(n[i])
+            else:
+                d.features[i] = (d.features[i] + abs(minx)) / (maxx + abs(minx))
+        data[d.qid].append(d)
+        if(d.rel >= 3):
+            data_rel[1].append(d)
+        else:
+            data_rel[0].append(d)
+                    
+    return data, data_rel
 
 
 def cal_idcg(data):
     idcg = defaultdict(float)
     for qid in data:
-        for idx, doc in enumerate(sorted([x for rel in data[qid] for x in data[qid][rel]], key=lambda x: x.rel, reverse=True)[:10]):
+        for idx, doc in enumerate(sorted([x for x in data[qid]], key=lambda x: x.rel, reverse=True)[:10]):
             idcg[qid] += ((2**doc.rel) - 1) / math.log(idx+2, 2)
     return idcg
 
 
 def main():
     args = get_args()
-    data = read_data(args.train)
-    data_val = read_data(args.vali)
+    data, data_rel = read_data(args.train)
+    data_val = read_data(args.vali)[0]
+    pickle.dump((data, data_rel, data_val), open('data.pickle', 'wb'))
+    print('pickle done')
+
+    #data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
     idcg_val = cal_idcg(data_val)
+
+    np.random.seed(0)
+    random.seed(0)
     if args.task == 1:
-        task1(data, args.eta, data_val, idcg_val, args.iter)
+        task1(data, data_rel, args.eta, data_val, idcg_val, args.iter)
 
 
 if __name__ == '__main__':
