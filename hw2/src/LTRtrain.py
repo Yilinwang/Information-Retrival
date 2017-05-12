@@ -49,14 +49,20 @@ def L(x1, x2, w):
     return (ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features))
 
 
-def task1(data, data_rel, eta, data_val, idcg_val, iter):
+def task1(data, data_rel, eta, data_val, idcg_val, iteration, sample, data_test):
     w = np.random.rand(136)
-    for it in range(iter):
-        print(it, evaluate(data_val, idcg_val, w))
-        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, w) for high, low in itertools.product(random.sample(data_rel[1], 300), random.sample(data_rel[0], 300)))
+    for it in range(iteration):
+        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, w) for high, low in itertools.product(random.sample(data_rel[1], int(math.sqrt(sample))), random.sample(data_rel[0], int(math.sqrt(sample)))))
         w = w - eta * sum(tmpL)
-    print(evaluate(data_val, idcg_val, w))
-    print(w)
+        print(it, evaluate(data_val, idcg_val, w))
+
+        with open('result_test/task1_eta%.3lf_iter%d_sample%d' % (eta, it+1, sample), 'w') as fp:
+            fp.write('QueryId,DocumentId\n')
+            for qid in data_test:
+                for doc in sorted([x for x in data_test[qid]], key=lambda x: f(w, x), reverse=True)[:10]:
+                    fp.write('%d,%d\n' % (doc.qid, doc.docid))
+
+    return w
 
 
 def get_args():
@@ -68,6 +74,8 @@ def get_args():
     parser.add_argument('-iter', type=int)
     parser.add_argument('-train', type=str)
     parser.add_argument('-vali', type=str)
+    parser.add_argument('-test', type=str)
+    parser.add_argument('-sample', type=int)
     return parser.parse_args()
 
 
@@ -75,7 +83,8 @@ def read_data(file_name):
     data = defaultdict(list)
     data_rel = defaultdict(list)
 
-    normalizer = list()
+    maxx = [-math.inf] * 136
+    minx = [math.inf] * 136
     tmpdata = list()
 
     with open(file_name) as fp:
@@ -84,23 +93,26 @@ def read_data(file_name):
             tmp = Data(int(line[0]), int(line[1].split(':')[1]), int(line[2].split(':')[1]), np.array([float(x.split(':')[1]) for x in line[3].split(' ')]))
 
             if len(tmp.features) == 136:
-                normalizer.append(tmp.features)
                 tmpdata.append(tmp)
+                for i in range(136):
+                    maxx[i] = max(tmp.features[i], maxx[i])
+                    minx[i] = min(tmp.features[i], minx[i])
 
-    n = np.array(normalizer).transpose()
+    print('readdata done')
+
     for d in tmpdata:
         for i in range(136):
-            minx = min(n[i])
-            maxx = max(n[i])
-            if minx == 0 and maxx == 0:
+            if minx[i] == 0 and maxx[i] == 0:
                 print(n[i])
             else:
-                d.features[i] = (d.features[i] + abs(minx)) / (maxx + abs(minx))
+                d.features[i] = (d.features[i] + abs(minx[i])) / (maxx[i] + abs(minx[i]))
         data[d.qid].append(d)
         if(d.rel >= 3):
             data_rel[1].append(d)
         else:
             data_rel[0].append(d)
+
+    print('norm done')
                     
     return data, data_rel
 
@@ -115,18 +127,21 @@ def cal_idcg(data):
 
 def main():
     args = get_args()
-    data, data_rel = read_data(args.train)
-    data_val = read_data(args.vali)[0]
-    pickle.dump((data, data_rel, data_val), open('data.pickle', 'wb'))
-    print('pickle done')
 
-    #data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
+    #data, data_rel = read_data(args.train)
+    #data_val = read_data(args.vali)[0]
+    #pickle.dump((data, data_rel, data_val), open('data.pickle', 'wb'))
+    #data_test = read_data(args.test)[0]
+    #pickle.dump(data_test, open('data_test.pickle', 'wb'))
+    #print('pickle done')
+    data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
+    data_test = pickle.load(open('data_test.pickle', 'rb'))
     idcg_val = cal_idcg(data_val)
 
     np.random.seed(0)
     random.seed(0)
     if args.task == 1:
-        task1(data, data_rel, args.eta, data_val, idcg_val, args.iter)
+        w = task1(data, data_rel, args.eta, data_val, idcg_val, args.iter, args.sample, data_test)
 
 
 if __name__ == '__main__':
