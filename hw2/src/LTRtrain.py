@@ -28,13 +28,13 @@ def f(w, x):
     return sigmoid(np.dot(np.transpose(w), x.features))
 
 
-def evaluate(data_val, idcg_val, w):
+def evaluate(data_val, idcg_val, w, func):
     ndcg_sum = 0
     count = 0
     for qid in data_val:
         dcg = 0
         if idcg_val[qid] != 0:
-            for idx, doc in enumerate(sorted([x for x in data_val[qid]], key=lambda x: f(w, x), reverse=True)[:10]): 
+            for idx, doc in enumerate(sorted([x for x in data_val[qid]], key=lambda x: func(w, x), reverse=True)[:10]): 
                 dcg += (2**doc.rel - 1) / math.log(idx+2, 2)
             ndcg = dcg / idcg_val[qid] 
             ndcg_sum += ndcg
@@ -42,21 +42,77 @@ def evaluate(data_val, idcg_val, w):
     return ndcg_sum / count
 
 
-def L(x1, x2, w):
+def dL(x1, x2, w):
     fx1 = f(w, x1)
     fx2 = f(w, x2)
     ef = math.exp(fx2-fx1)
     return (ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features))
 
 
+def f2(w, x):
+    return np.dot(np.transpose(w), x.features)
+
+
+def dL2(x, w, reg):
+    return 2 * (f2(w, x) - x.rel) * x.features + reg * w
+
+
+def task2(data, eta, data_val, idcg_val, iteration, data_test, reg):
+    #w = np.random.rand(136)
+    w = np.ones(136)
+    w = w / sum(w)
+    print('iteration,validation ndcg,loss')
+    for it in range(iteration):
+        loss = 0
+        for qid in data:
+            for x in data[qid]:
+                loss += (x.rel - f2(w, x)) ** 2 + reg * np.dot(np.transpose(w), w)
+                w = w - eta * dL2(x, w, reg)
+        e = evaluate(data_val, idcg_val, w, f2)
+        print('%d,%lf,%lf' % (it+1, e, loss/len(data.keys())))
+
+        with open('result_test/task2_%.4lf_%.5lf_%d' % (eta, reg, it+1), 'w') as fp:
+            fp.write('QueryId,DocumentId\n')
+            for qid in data_test:
+                for doc in sorted([x for x in data_test[qid]], key=lambda x: f2(w, x), reverse=True)[:10]:
+                    fp.write('%d,%d\n' % (doc.qid, doc.docid))
+    return w
+
+
+def dL3(x, w, reg):
+    return (x.rel + 1) * 2 * (1/f2(w, x)) * x.features + reg * w
+
+
+def task3(data, eta, data_val, idcg_val, iteration, data_test, reg):
+    w = np.random.rand(136)
+    w = w / sum(w)
+    for it in range(iteration):
+        loss = 0
+        for qid in data:
+            for x in data[qid]:
+                w = w - eta * dL3(x, w, reg)
+        e = evaluate(data_val, idcg_val, w, f2)
+        print(it+1, e, loss/len(data.keys()))
+
+        with open('result_test/task3_eta%.4lf_iter%d_reg%.5lf' % (eta, it+1, reg), 'w') as fp:
+            fp.write('QueryId,DocumentId\n')
+            for qid in data_test:
+                for doc in sorted([x for x in data_test[qid]], key=lambda x: f2(w, x), reverse=True)[:10]:
+                    fp.write('%d,%d\n' % (doc.qid, doc.docid))
+    return w
+
+
 def task1(data, data_rel, eta, data_val, idcg_val, iteration, sample, data_test):
     w = np.random.rand(136)
+    w = w / sum(w)
     for it in range(iteration):
-        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(L)(high, low, w) for high, low in itertools.product(random.sample(data_rel[1], int(math.sqrt(sample))), random.sample(data_rel[0], int(math.sqrt(sample)))))
+        tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(dL)(high, low, w) for high, low in itertools.product(random.sample(data_rel[1], int(math.sqrt(sample))), random.sample(data_rel[0], int(math.sqrt(sample)))))
         w = w - eta * sum(tmpL)
-        print(it, evaluate(data_val, idcg_val, w))
+        w = w / sum(w)
+        e = evaluate(data_val, idcg_val, w, f)
+        print(it, e)
 
-        with open('result_test/task1_eta%.3lf_iter%d_sample%d' % (eta, it+1, sample), 'w') as fp:
+        with open('result_test/task1_eta%.3lf_iter%d_sample%d_vali_%.4lf' % (eta, it+1, sample, e), 'w') as fp:
             fp.write('QueryId,DocumentId\n')
             for qid in data_test:
                 for doc in sorted([x for x in data_test[qid]], key=lambda x: f(w, x), reverse=True)[:10]:
@@ -76,6 +132,7 @@ def get_args():
     parser.add_argument('-vali', type=str)
     parser.add_argument('-test', type=str)
     parser.add_argument('-sample', type=int)
+    parser.add_argument('-reg', type=float)
     return parser.parse_args()
 
 
@@ -142,6 +199,10 @@ def main():
     random.seed(0)
     if args.task == 1:
         w = task1(data, data_rel, args.eta, data_val, idcg_val, args.iter, args.sample, data_test)
+    elif args.task == 2:
+        w = task2(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg)
+    elif args.task == 3:
+        w = task3(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg)
 
 
 if __name__ == '__main__':
