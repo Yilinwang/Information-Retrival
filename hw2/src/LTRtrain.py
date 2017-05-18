@@ -1,5 +1,6 @@
 from collections import defaultdict
 from joblib import Parallel, delayed
+from sklearn.preprocessing import normalize
 import multiprocessing
 import numpy as np
 import itertools
@@ -54,24 +55,52 @@ def f2(w, x):
 
 
 def dL2(x, w, reg):
-    return 2 * (f2(w, x) - x.rel) * x.features + reg * w
+    return (x.rel + 1) * (2 * (f2(w, x) - x.rel) * x.features + 2 * reg * w)
 
 
-def task2(data, eta, data_val, idcg_val, iteration, data_test, reg):
-    #w = np.random.rand(136)
-    w = np.ones(136)
-    w = w / sum(w)
+def norm(w):
+    return w / math.sqrt(np.dot(w, w))
+
+
+def task2_reg(data, eta, data_val, idcg_val, iteration, data_test, reg, sample):
+    x = list()
+    y = list()
+    for qid in data:
+        for d in data[qid]:
+            y.append(d.rel)
+            x.append(d.features)
+    x = np.array(x)
+    y = np.array(y)
+    w = np.dot(np.dot(np.linalg.inv(np.dot(np.transpose(x), x) + 129 * np.identity(136)), np.transpose(x)), y)
+    #129
+    e = evaluate(data_val, idcg_val, w, f2)
+    print(e)
+
+    with open('result_test/task2/reg_129', 'w') as fp:
+        fp.write('QueryId,DocumentId\n')
+        for qid in data_test:
+            for doc in sorted([x for x in data_test[qid]], key=lambda x: f2(w, x), reverse=True)[:10]:
+                fp.write('%d,%d\n' % (doc.qid, doc.docid))
+
+
+def task2(data, eta, data_val, idcg_val, iteration, data_test, reg, sample):
+    w = np.random.rand(136)
+    #w = np.ones(136)
+    w = w / sum(np.abs(w))
     print('iteration,validation ndcg,loss')
     for it in range(iteration):
         loss = 0
-        for qid in data:
+        #for qid in data:
+        for qid in random.sample(data.keys(), min(sample, len(data.keys()))):
+            tmpL = np.zeros(136)
             for x in data[qid]:
-                loss += (x.rel - f2(w, x)) ** 2 + reg * np.dot(np.transpose(w), w)
-                w = w - eta * dL2(x, w, reg)
+                loss += ((x.rel - f2(w, x)) ** 2 + reg * np.dot(np.transpose(w), w))
+                tmpL += dL2(x, w, reg)
+            w = w - eta * tmpL
         e = evaluate(data_val, idcg_val, w, f2)
         print('%d,%lf,%lf' % (it+1, e, loss/len(data.keys())))
 
-        with open('result_test/task2_%.4lf_%.5lf_%d' % (eta, reg, it+1), 'w') as fp:
+        with open('result_test/task2/2_%.4lf_%.5lf_%d' % (eta, reg, it+1), 'w') as fp:
             fp.write('QueryId,DocumentId\n')
             for qid in data_test:
                 for doc in sorted([x for x in data_test[qid]], key=lambda x: f2(w, x), reverse=True)[:10]:
@@ -154,7 +183,6 @@ def read_data(file_name):
                 for i in range(136):
                     maxx[i] = max(tmp.features[i], maxx[i])
                     minx[i] = min(tmp.features[i], minx[i])
-
     print('readdata done')
 
     for d in tmpdata:
@@ -162,13 +190,12 @@ def read_data(file_name):
             if minx[i] == 0 and maxx[i] == 0:
                 print(n[i])
             else:
-                d.features[i] = (d.features[i] + abs(minx[i])) / (maxx[i] + abs(minx[i]))
+                d.features[i] = (d.features[i] - minx[i]) / (maxx[i] - minx[i])
         data[d.qid].append(d)
         if(d.rel >= 3):
             data_rel[1].append(d)
         else:
             data_rel[0].append(d)
-
     print('norm done')
                     
     return data, data_rel
@@ -186,13 +213,15 @@ def main():
     args = get_args()
 
     #data, data_rel = read_data(args.train)
+    #pickle.dump((data, data_rel), open('alldata.pickle', 'wb'))
     #data_val = read_data(args.vali)[0]
     #pickle.dump((data, data_rel, data_val), open('data.pickle', 'wb'))
     #data_test = read_data(args.test)[0]
     #pickle.dump(data_test, open('data_test.pickle', 'wb'))
-    #print('pickle done')
-    data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
+
     data_test = pickle.load(open('data_test.pickle', 'rb'))
+    data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
+    #data, data_rel = pickle.load(open('alldata.pickle', 'rb'))
     idcg_val = cal_idcg(data_val)
 
     np.random.seed(0)
@@ -200,7 +229,8 @@ def main():
     if args.task == 1:
         w = task1(data, data_rel, args.eta, data_val, idcg_val, args.iter, args.sample, data_test)
     elif args.task == 2:
-        w = task2(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg)
+        #w = task2_reg(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg, args.sample)
+        w = task2(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg, args.sample)
     elif args.task == 3:
         w = task3(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg)
 
