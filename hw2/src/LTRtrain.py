@@ -55,7 +55,7 @@ def f2(w, x):
 
 
 def dL2(x, w, reg):
-    return (x.rel + 1) * (2 * (f2(w, x) - x.rel) * x.features + 2 * reg * w)
+    return (x.rel**2 + 1) * (2 * (f2(w, x) - x.rel) * x.features + 2 * reg * w)
 
 
 def norm(w):
@@ -90,13 +90,13 @@ def task2(data, eta, data_val, idcg_val, iteration, data_test, reg, sample):
     print('iteration,validation ndcg,loss')
     for it in range(iteration):
         loss = 0
-        #for qid in data:
-        for qid in random.sample(data.keys(), min(sample, len(data.keys()))):
+        for qid in data:
+        #for qid in random.sample(data.keys(), min(sample, len(data.keys()))):
             tmpL = np.zeros(136)
             for x in data[qid]:
                 loss += ((x.rel - f2(w, x)) ** 2 + reg * np.dot(np.transpose(w), w))
                 tmpL += dL2(x, w, reg)
-            w = w - eta * tmpL
+            w = w - eta * (tmpL / len(data[qid]))
         e = evaluate(data_val, idcg_val, w, f2)
         print('%d,%lf,%lf' % (it+1, e, loss/len(data.keys())))
 
@@ -219,10 +219,11 @@ def main():
     #data_test = read_data(args.test)[0]
     #pickle.dump(data_test, open('data_test.pickle', 'wb'))
 
-    data_test = pickle.load(open('data_test.pickle', 'rb'))
-    data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
+    #data_test = pickle.load(open('data_test.pickle', 'rb'))
+    #data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
     #data, data_rel = pickle.load(open('alldata.pickle', 'rb'))
-    idcg_val = cal_idcg(data_val)
+    data, data_test = pickle.load(open('data_maxmin.pickle', 'rb'))
+    #idcg_val = cal_idcg(data_val)
 
     np.random.seed(0)
     random.seed(0)
