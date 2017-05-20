@@ -75,7 +75,7 @@ def f(x, w):
 
 
 def dL(x, w, reg):
-    return (-2 * (x.rel - f(x, w)) * x.features + 2 * reg * w) * (x.rel + 1)
+    return (-2 * (x.rel - f(x, w)) * x.features + 2 * reg * w) * (x.rel**2 + 1)
 
 
 def evaluation(data, data_val, w):
@@ -112,6 +112,29 @@ def train(data, lr, reg, T, sample, prefix):
         np.save('result_w/%s_%d' % (prefix, it), w)
 
 
+def cross_vali_train(data, lr, reg, T, sample, prefix):
+    vali_num = 5
+    vali = list(split_data(list(data.keys()), vali_num))
+    vw = [np.array([1/136]*136)] * vali_num
+    w = np.array([1/136]*136)
+    for it in range(T):
+        ve = 0
+        for i, data_val, data_train in vali:
+            for qid in data_train:
+                tmpdL = np.zeros(136)
+                for x in data[qid]:
+                    tmpdL += dL(x, vw[i], reg)
+                vw[i] = vw[i] - (lr * tmpdL / len(data[qid]))
+            ve += evaluation(data, data_val, vw[i])
+        for qid in data:
+            tmpdL = np.zeros(136)
+            for x in data[qid]:
+                tmpdL += dL(x, w, reg)
+            w = w - (lr * tmpdL / len(data[qid]))
+        print(it, ve / vali_num, '%s_%d' % (prefix, it))
+        np.save('result_w/%s_%d' % (prefix, it), w)
+
+
 def main():
     random.seed(1126)
     args = get_args()
@@ -122,7 +145,8 @@ def main():
     #print('pickle done')
     #data, data_test = pickle.load(open('data_maxmin.pickle', 'rb'))
     data = pickle.load(open('data_train.pickle', 'rb'))
-    w = train(data, args.lr, args.reg, args.T, args.sample, args.prefix)
+    #train(data, args.lr, args.reg, args.T, args.sample, args.prefix)
+    cross_vali_train(data, args.lr, args.reg, args.T, args.sample, args.prefix)
 
 
 if __name__ == '__main__':
