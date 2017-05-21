@@ -142,14 +142,16 @@ def task1(data, lr, reg, T, sample):
 def train(data, lr, reg, T, sample, prefix):
     w = np.ones(136) / 136
     data_val, data_train = mkvali(list(data.keys()))
+    print(lr)
+    print('iteration,validation ndcg')
     for it in range(T):
         for qid in random.sample(data_train, sample):
             tmpdL = np.zeros(136)
             for x in data[qid]:
                 tmpdL += dL(x, w, reg)
             w = w - (lr * tmpdL / len(data[qid]))
-        print(it, evaluation(data, data_val, w, f), '%s_%d' % (prefix, it))
-        np.save('result_w/%s_%d' % (prefix, it), w)
+        print('%d,%lf' % (it, evaluation(data, data_val, w, f)))
+        #np.save('result_w/%s_%d' % (prefix, it), w)
 
 
 def cross_vali_train(data, lr, reg, T, sample, prefix):
