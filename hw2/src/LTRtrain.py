@@ -131,22 +131,17 @@ def task3(data, eta, data_val, idcg_val, iteration, data_test, reg):
     return w
 
 
-def task1(data, data_rel, eta, data_val, idcg_val, iteration, sample, data_test):
+def task1(data, data_rel, eta, data_val, idcg_val, iteration, sample):
     w = np.random.rand(136)
     w = w / sum(w)
+    print('iteration,validation')
     for it in range(iteration):
         tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(dL)(high, low, w) for high, low in itertools.product(random.sample(data_rel[1], int(math.sqrt(sample))), random.sample(data_rel[0], int(math.sqrt(sample)))))
         w = w - eta * sum(tmpL)
         w = w / sum(w)
         e = evaluate(data_val, idcg_val, w, f)
-        print(it, e)
-
-        with open('result_test/task1_eta%.3lf_iter%d_sample%d_vali_%.4lf' % (eta, it+1, sample, e), 'w') as fp:
-            fp.write('QueryId,DocumentId\n')
-            for qid in data_test:
-                for doc in sorted([x for x in data_test[qid]], key=lambda x: f(w, x), reverse=True)[:10]:
-                    fp.write('%d,%d\n' % (doc.qid, doc.docid))
-
+        print('%d,%f' % (it, e))
+        np.save('result_w/task1_%d' % (it), w)
     return w
 
 
@@ -220,15 +215,15 @@ def main():
     #pickle.dump(data_test, open('data_test.pickle', 'wb'))
 
     #data_test = pickle.load(open('data_test.pickle', 'rb'))
-    #data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
+    data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
     #data, data_rel = pickle.load(open('alldata.pickle', 'rb'))
-    data, data_test = pickle.load(open('data_maxmin.pickle', 'rb'))
-    #idcg_val = cal_idcg(data_val)
+    #data, data_test = pickle.load(open('data_maxmin.pickle', 'rb'))
+    idcg_val = cal_idcg(data_val)
 
     np.random.seed(0)
     random.seed(0)
     if args.task == 1:
-        w = task1(data, data_rel, args.eta, data_val, idcg_val, args.iter, args.sample, data_test)
+        w = task1(data, data_rel, args.eta, data_val, idcg_val, args.iter, args.sample)
     elif args.task == 2:
         #w = task2_reg(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg, args.sample)
         w = task2(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg, args.sample)
