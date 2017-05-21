@@ -15,6 +15,24 @@ class Data:
         self.features = features
 
 
+def sigmoid(x):
+    if x < 0:
+        return 1.0 - (1.0 / (1.0 + math.exp(x)))
+    else:
+        return 1.0 / (1.0 + math.exp(-x))
+
+
+def f1(x, w):
+    return sigmoid(np.dot(np.transpose(w), x.features))
+
+
+def dL1(x1, x2, w):
+    fx1 = f1(x1, w)
+    fx2 = f1(x2, w)
+    ef = math.exp(fx2-fx1)
+    return (ef/(1+ef)) * ((fx2*(1-fx2)*x2.features) - (fx1*(1-fx1)*x1.features))
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-train', type=str)
@@ -24,6 +42,7 @@ def get_args():
     parser.add_argument('-reg', type=float)
     parser.add_argument('-T', type=int)
     parser.add_argument('-sample', type=int)
+    parser.add_argument('-task', type=int)
     return parser.parse_args()
 
 
@@ -75,10 +94,10 @@ def f(x, w):
 
 
 def dL(x, w, reg):
-    return (-2 * (x.rel - f(x, w)) * x.features + 2 * reg * w) * (x.rel**2 + 1)
+    return (-2 * (x.rel - f(x, w)) * x.features + 2 * reg * w)
 
 
-def evaluation(data, data_val, w):
+def evaluation(data, data_val, w, func):
     ndcg = 0
     count = 0
     for qid in data_val:
@@ -87,7 +106,7 @@ def evaluation(data, data_val, w):
             idcg += ((2 ** x.rel) - 1) / math.log(i+2, 2)
         if idcg != 0:
             dcg = 0
-            for i, x in enumerate(sorted([x for x in data[qid]], key=lambda x: f(x, w), reverse=True)[:10]):
+            for i, x in enumerate(sorted([x for x in data[qid]], key=lambda x: func(x, w), reverse=True)[:10]):
                 dcg += ((2 ** x.rel) - 1) / math.log(i+2, 2)
             ndcg += dcg / idcg
             count += 1
@@ -99,6 +118,27 @@ def mkvali(l):
     return l[:500], l[501:]
 
 
+def task1(data, lr, reg, T, sample):
+    w = np.ones(136) / 136
+    data_val, data_train = mkvali(list(data.keys()))
+    pos = list()
+    neg = list()
+    for qid in data_train:
+        for x in data[qid]:
+            if x.rel >= 3:
+                pos.append(x)
+            else:
+                neg.append(x)
+    for it in range(T):
+        tmpdL = np.zeros(136)
+        for high, low in itertools.product(random.sample(pos, int(math.sqrt(sample))), random.sample(neg, int(math.sqrt(sample)))):
+            tmpdL += dL1(high, low, w)
+        w = w - (lr * tmpdL / len(data[qid]))
+        print(it, evaluation(data, data_val, w, f1))
+        np.save('result_w/task1_%d' % (it), w)
+
+
+
 def train(data, lr, reg, T, sample, prefix):
     w = np.ones(136) / 136
     data_val, data_train = mkvali(list(data.keys()))
@@ -108,7 +148,7 @@ def train(data, lr, reg, T, sample, prefix):
             for x in data[qid]:
                 tmpdL += dL(x, w, reg)
             w = w - (lr * tmpdL / len(data[qid]))
-        print(it, evaluation(data, data_val, w), '%s_%d' % (prefix, it))
+        print(it, evaluation(data, data_val, w, f), '%s_%d' % (prefix, it))
         np.save('result_w/%s_%d' % (prefix, it), w)
 
 
@@ -125,7 +165,7 @@ def cross_vali_train(data, lr, reg, T, sample, prefix):
                 for x in data[qid]:
                     tmpdL += dL(x, vw[i], reg)
                 vw[i] = vw[i] - (lr * tmpdL / len(data[qid]))
-            ve += evaluation(data, data_val, vw[i])
+            ve += evaluation(data, data_val, vw[i], f)
         for qid in data:
             tmpdL = np.zeros(136)
             for x in data[qid]:
@@ -145,8 +185,11 @@ def main():
     #print('pickle done')
     #data, data_test = pickle.load(open('data_maxmin.pickle', 'rb'))
     data = pickle.load(open('data_train.pickle', 'rb'))
-    #train(data, args.lr, args.reg, args.T, args.sample, args.prefix)
-    cross_vali_train(data, args.lr, args.reg, args.T, args.sample, args.prefix)
+    if args.task == 1:
+        task1(data, args.lr, args.reg, args.T, args.sample)
+    else:
+        train(data, args.lr, args.reg, args.T, args.sample, args.prefix)
+    #cross_vali_train(data, args.lr, args.reg, args.T, args.sample, args.prefix)
 
 
 if __name__ == '__main__':
