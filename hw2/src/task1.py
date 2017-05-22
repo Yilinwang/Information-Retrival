@@ -55,7 +55,7 @@ def f2(w, x):
 
 
 def dL2(x, w, reg):
-    return (x.rel**2 + 1) * (2 * (f2(w, x) - x.rel) * x.features + 2 * reg * w)
+    return (x.rel + 1) * (2 * (f2(w, x) - x.rel) * x.features + 2 * reg * w)
 
 
 def norm(w):
@@ -90,13 +90,13 @@ def task2(data, eta, data_val, idcg_val, iteration, data_test, reg, sample):
     print('iteration,validation ndcg,loss')
     for it in range(iteration):
         loss = 0
-        for qid in data:
-        #for qid in random.sample(data.keys(), min(sample, len(data.keys()))):
+        #for qid in data:
+        for qid in random.sample(data.keys(), min(sample, len(data.keys()))):
             tmpL = np.zeros(136)
             for x in data[qid]:
                 loss += ((x.rel - f2(w, x)) ** 2 + reg * np.dot(np.transpose(w), w))
                 tmpL += dL2(x, w, reg)
-            w = w - eta * (tmpL / len(data[qid]))
+            w = w - eta * tmpL
         e = evaluate(data_val, idcg_val, w, f2)
         print('%d,%lf,%lf' % (it+1, e, loss/len(data.keys())))
 
@@ -131,17 +131,23 @@ def task3(data, eta, data_val, idcg_val, iteration, data_test, reg):
     return w
 
 
-def task1(data, data_rel, eta, data_val, idcg_val, iteration, sample):
+def task1(data, data_rel, eta, data_val, idcg_val, iteration, sample, data_test):
     w = np.random.rand(136)
     w = w / sum(w)
-    print('iteration,validation')
     for it in range(iteration):
         tmpL = Parallel(n_jobs=multiprocessing.cpu_count())(delayed(dL)(high, low, w) for high, low in itertools.product(random.sample(data_rel[1], int(math.sqrt(sample))), random.sample(data_rel[0], int(math.sqrt(sample)))))
         w = w - eta * sum(tmpL)
         w = w / sum(w)
         e = evaluate(data_val, idcg_val, w, f)
-        print('%d,%f' % (it, e))
-        np.save('result_w/task1_%d' % (it), w)
+        print(it, e)
+        np.save('w/task1_%d' % (it), w)
+
+        with open('result_test/task1_eta%.3lf_iter%d_sample%d' % (eta, it+1, sample), 'w') as fp:
+            fp.write('QueryId,DocumentId\n')
+            for qid in data_test:
+                for doc in sorted([x for x in data_test[qid]], key=lambda x: f(w, x), reverse=True)[:10]:
+                    fp.write('%d,%d\n' % (doc.qid, doc.docid))
+
     return w
 
 
@@ -214,18 +220,15 @@ def main():
     #data_test = read_data(args.test)[0]
     #pickle.dump(data_test, open('data_test.pickle', 'wb'))
 
-    #data_test = pickle.load(open('data_test.pickle', 'rb'))
+    data_test = pickle.load(open('data_test.pickle', 'rb'))
     data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
     #data, data_rel = pickle.load(open('alldata.pickle', 'rb'))
-    #data, data_test = pickle.load(open('data_maxmin.pickle', 'rb'))
     idcg_val = cal_idcg(data_val)
-    
-    data_val = None
 
     np.random.seed(0)
     random.seed(0)
     if args.task == 1:
-        w = task1(data, data_rel, args.eta, data_val, idcg_val, args.iter, args.sample)
+        w = task1(data, data_rel, args.eta, data_val, idcg_val, args.iter, args.sample, data_test)
     elif args.task == 2:
         #w = task2_reg(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg, args.sample)
         w = task2(data, args.eta, data_val, idcg_val, args.iter, data_test, args.reg, args.sample)
