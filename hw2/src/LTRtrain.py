@@ -68,10 +68,11 @@ def task2(data, eta, data_val, idcg_val, iteration, data_test, reg):
             for x in data[qid]:
                 loss += (x.rel - f2(w, x)) ** 2 + reg * np.dot(np.transpose(w), w)
                 w = w - eta * dL2(x, w, reg)
-        e = evaluate(data_val, idcg_val, w, f2)
-        print('%d,%lf,%lf' % (it+1, e, loss/len(data.keys())))
+        #e = evaluate(data_val, idcg_val, w, f2)
+        #print('%d,%lf,%lf' % (it+1, e, loss/len(data.keys())))
+        print(it+1)
 
-        with open('result_test/task2_%.4lf_%.5lf_%d' % (eta, reg, it+1), 'w') as fp:
+        with open('result_test/task2all_%.4lf_%.5lf_%d' % (eta, reg, it+1), 'w') as fp:
             fp.write('QueryId,DocumentId\n')
             for qid in data_test:
                 for doc in sorted([x for x in data_test[qid]], key=lambda x: f2(w, x), reverse=True)[:10]:
@@ -185,15 +186,17 @@ def cal_idcg(data):
 def main():
     args = get_args()
 
-    #data, data_rel = read_data(args.train)
+    data, data_rel = read_data(args.train)
     #data_val = read_data(args.vali)[0]
     #pickle.dump((data, data_rel, data_val), open('data.pickle', 'wb'))
     #data_test = read_data(args.test)[0]
     #pickle.dump(data_test, open('data_test.pickle', 'wb'))
     #print('pickle done')
-    data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
+    #data, data_rel, data_val = pickle.load(open('data.pickle', 'rb'))
     data_test = pickle.load(open('data_test.pickle', 'rb'))
     idcg_val = cal_idcg(data_val)
+    
+    data_val = None
 
     np.random.seed(0)
     random.seed(0)
